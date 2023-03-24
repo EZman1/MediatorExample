@@ -83,6 +83,92 @@ CreateUserCommand is a simple data class that represents the request to create a
 
 CreateUserCommandHandler is the class that handles the CreateUserCommand request. The Handle method takes the CreateUserCommand request and it is responsible for executing the request.
 
+## Validation
+
+Each handler can have it's own validation, this can be done with a pipeline behaviour. For this validation we use FluentValidation.
+```
+internal class CreateUserCommandValidator : AbstractValidator<CreateUserCommand>
+{
+    public CreateUserCommandValidator()
+    {
+        RuleFor(x => x.CreateUser.Name).NotEmpty();
+        RuleFor(x => x.CreateUser.EmailAddress).NotEmpty();
+    }
+}
+```
+The CreateUserCommandValidator is a class that derives from the AbstractValidator<T> class in the FluentValidation library, and it defines rules for validating a CreateUserCommand object.
+In this example, the validator defines two rules using the RuleFor method. Each rule specifies a property of the CreateUserCommand object that should be validated, and the validation logic to apply. The rules validate that the Name and EmailAddress properties of the CreateUser object are not empty. This ensures that the user's name and email address is provided when creating a new user. If either property is empty, a validation error is added to the validation result.
+
+```
+public class ValidationBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse> where TRequest : IRequest
+{
+    private readonly IEnumerable<IValidator<TRequest>> validators;
+
+    public ValidationBehavior(IEnumerable<IValidator<TRequest>> validators)
+    {
+        this.validators = validators;
+    }
+
+    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
+    {
+        if (validators.Any())
+        {
+            foreach (var validator in validators)
+            {
+                var result = await validator.ValidateAsync(request);
+                HandleValidationResult(request, result);
+            }
+        }
+
+        return await next();
+    }
+
+    private static void HandleValidationResult(TRequest request, ValidationResult result)
+    {
+        if (!result.IsValid)
+        {
+            throw new ValidationException(request, result.Errors, result.RuleSetsExecuted);
+        }
+    }
+}
+```
+This is an example of a validation behavior class. In this case it will validate all requests with the 'IRequest' interface.
+
+## Registering Dependencies
+```
+public static class ConfigureServices
+{
+    public static IServiceCollection AddApplicationServices(this IServiceCollection services)
+    {
+        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(ConfigureServices).Assembly));
+        
+        services.AddValidatorsFromAssemblies(AppDomain.CurrentDomain.GetAssemblies(), includeInternalTypes: true);
+        services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+
+        return services;
+    }
+}
+```
+The AddApplicationServices method is an extension method for the IServiceCollection interface, which is used to register the services required for the application.
+This registers the MediatR library and sets up MediatR to automatically scan for and register command and query handlers in the assembly containing the ConfigureServices class.
+
+```
+    services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(ConfigureServices).Assembly));
+```
+This scans all assemblies in the current domain for classes that derive from the AbstractValidator<T> class in the FluentValidation library, and registers them with the dependency injection container.
+
+```
+    services.AddValidatorsFromAssemblies(AppDomain.CurrentDomain.GetAssemblies(), includeInternalTypes: true);
+```
+This registers validators from all assemblies in the current application domain. This ensures that all validators are registered in the dependency injection container and available for use when validating requests.
+
+The includeInternalTypes parameter specifies whether to include internal types in the assemblies. If this parameter is set to true, internal validators will also be registered in the container.
+
+```
+    services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+```
+This registers the ValidationBehavior class as a scoped pipeline behavior with the dependency injection container. The typeof(IPipelineBehavior<,>) parameter specifies the interface that the behavior implements, and the typeof(ValidationBehavior<,>) parameter specifies the behavior class.
+
 ## Conclusion
 The mediator pattern is a useful pattern for promoting loose coupling between objects. In the context of CQRS, it is commonly used to handle communication between commands and their respective handlers. By using the mediator pattern, you can create a more flexible and maintainable architecture for your CQRS applications.
 By implementing the mediator pattern, you can improve the scalability, performance, and maintainability of your CQRS applications. The mediator pattern allows for loose coupling between objects and promotes encapsulation of interactions between objects. This makes it easier to add new commands to the system and maintain the codebase over time.

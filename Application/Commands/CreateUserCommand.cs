@@ -16,7 +16,7 @@ public class CreateUserCommand : IRequest
     }
 }
 
-public class CreateUserCommandValidator : AbstractValidator<CreateUserCommand>
+internal class CreateUserCommandValidator : AbstractValidator<CreateUserCommand>
 {
     public CreateUserCommandValidator()
     {
